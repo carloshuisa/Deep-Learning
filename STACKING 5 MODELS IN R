@@ -1,0 +1,231 @@
+library(lightgbm)
+library(gmodels)
+library(caret)
+library(unbalanced)
+library(xgboost)
+library(gbm)
+library(e1071)
+library(randomForest)
+library(Matrix)
+
+####################### STACKING
+
+
+train <- traindata
+test <- testdata
+
+cv <- sample.int( nrow(train) ) %% 5
+table( cv )
+
+
+
+df_test_xgb <- data.frame(PF1=rep(NA,nrow(Datatest)),PF2=rep(NA,nrow(Datatest)),PF3=rep(NA,nrow(Datatest)),
+                          PF4=rep(NA,nrow(Datatest)),PF5=rep(NA,nrow(Datatest)))
+predictions_xgb_train <- rep( NA , nrow(train)  )
+fold=0
+for( fold in unique(cv)  ){
+  
+  print( paste("Starting fold", fold )  )
+  ind_train <- which( cv != fold  )
+  ind_test   <- which( cv == fold  )
+  
+  train_cv <- train[ind_train,]
+  smote <- ubUnder(train_cv[-(ncol(train_cv))],train_cv$target,perc = 49,method = "percPos")
+  x <- smote$X
+  target <- smote$Y
+  smoted <- cbind(x,target)
+  table(smoted$target)
+  
+  xgbtest <- train[ind_test,]
+  smoted$target <- as.integer(smoted$target)-1
+  xgbtest$target <- as.integer(xgbtest$target)-1
+  
+  xgb <- xgboost(data=data.matrix(smoted[-(ncol(smoted))]),label = smoted$target,
+                 eta=0.006624986,
+                 max_depth=11,
+                 nround=1200,
+                 subsample=0.785258,
+                 colsample_bytree=0.600451,
+                 min_child_weight=5,
+                 max_delta_step=2,
+                 gamma=11,
+                 seed=1,
+                 objective="binary:logistic")
+  
+  predictions_xgb_train[ind_test] <- predict(xgb, data.matrix(xgbtest))
+  
+  df_test_xgb[fold+1] <- predict(xgb, data.matrix(test))
+  
+}
+
+
+df_test_gb <- data.frame(PF1=rep(NA,nrow(Datatest)),PF2=rep(NA,nrow(Datatest)),PF3=rep(NA,nrow(Datatest)),
+                         PF4=rep(NA,nrow(Datatest)),PF5=rep(NA,nrow(Datatest)))
+predictions_gb_train <- rep( NA , nrow(train)  )
+fold=0
+for( fold in unique(cv)  ){
+  
+  print( paste("Starting fold", fold )  )
+  ind_train <- which( cv != fold  )
+  ind_test   <- which( cv == fold  )
+  
+  train_cv <- train[ind_train,]
+  smote <- ubUnder(train_cv[-(ncol(train_cv))],train_cv$target,perc = 49,method = "percPos")
+  x <- smote$X
+  target <- smote$Y
+  smoted <- cbind(x,target)
+  table(smoted$target)
+  
+  gbtest <- train[ind_test,]
+  smoted$target <- as.integer(smoted$target)-1
+  gbtest$target <- as.integer(gbtest$target)-1
+  
+  gbmModel = gbm(formula = target ~ .,
+                 distribution = "adaboost",
+                 data = smoted,
+                 n.trees = 4668,
+                 shrinkage = 0.002743203,
+                 interaction.depth = 2,
+                 n.minobsinnode = 22)
+  
+  predictions_gb_train[ind_test] <- predict(gbmModel , gbtest,n.trees = 4668,type = "response")
+  
+  df_test_gb[fold+1] <- predict(gbmModel , test,n.trees = 4668,type = "response")
+  
+}
+
+
+
+df_test_svm <- data.frame(PF1=rep(NA,nrow(Datatest)),PF2=rep(NA,nrow(Datatest)),PF3=rep(NA,nrow(Datatest)),
+                          PF4=rep(NA,nrow(Datatest)),PF5=rep(NA,nrow(Datatest)))
+predictions_svm_train <- rep( NA , nrow(train)  )
+fold=0
+for( fold in unique(cv)  ){
+  
+  print( paste("Starting fold", fold )  )
+  ind_train <- which( cv != fold  )
+  ind_test   <- which( cv == fold  )
+  
+  train_cv <- train[ind_train,]
+  smote <- ubUnder(train_cv[-(ncol(train_cv))],train_cv$target,perc = 50,method = "percPos")
+  x <- smote$X
+  target <- smote$Y
+  smoted <- cbind(x,target)
+  table(smoted$target)
+  
+  smoted <- smoted[, sapply(smoted, function(col) length(unique(col))) > 1]
+  
+  testsvm <- test
+  testsvm <- testsvm[,colnames(testsvm)%in% colnames(smoted)]
+  test_cv <- train[ind_test,]
+  test_cv <- test_cv[,colnames(test_cv)%in% colnames(smoted)]
+  
+  svm_model <- svm(target ~ ., data=smoted,gamma = 8.722509e-05, cost = 8,cross=5, probability=TRUE)
+  
+  predictions_svm_train[ind_test] <- attr(predict(svm_model,test_cv,probability=TRUE), "prob")[,"1"] 
+  
+  df_test_svm[fold+1] <- attr(predict(svm_model,testsvm,probability=TRUE), "prob")[,"1"] 
+  
+}
+
+
+
+df_test_rf <- data.frame(PF1=rep(NA,nrow(Datatest)),PF2=rep(NA,nrow(Datatest)),PF3=rep(NA,nrow(Datatest)),
+                         PF4=rep(NA,nrow(Datatest)),PF5=rep(NA,nrow(Datatest)))
+predictions_rf_train <- rep( NA , nrow(train)  )
+fold=0
+for( fold in unique(cv)  ){
+  
+  print( paste("Starting fold", fold )  )
+  ind_train <- which( cv != fold  )
+  ind_test   <- which( cv == fold  )
+  
+  train_cv <- train[ind_train,]
+  smote <- ubUnder(train_cv[-(ncol(train_cv))],train_cv$target,perc = 50,method = "percPos")
+  x <- smote$X
+  target <- smote$Y
+  smoted <- cbind(x,target)
+  table(smoted$target)
+  
+  test_cv <- train[ind_test,]
+  rf <- randomForest( x=smoted[-(ncol(smoted))] , y=factor(smoted$target), ntree=1000, do.trace=F, mtry=7   )
+  
+  predictions_rf_train[ind_test] <- as.numeric( predict( rf, test_cv, type="prob" )[,"1"] )
+  df_test_rf[fold+1] <- as.numeric( predict( rf, test, type="prob" )[,"1"] )
+  
+}
+
+
+df_test_net <- data.frame(PF1=rep(NA,nrow(Datatest)),PF2=rep(NA,nrow(Datatest)),PF3=rep(NA,nrow(Datatest)),
+                          PF4=rep(NA,nrow(Datatest)),PF5=rep(NA,nrow(Datatest)))
+predictions_net_train <- rep( NA , nrow(train)  )
+fold=0
+for( fold in unique(cv)  ){
+  
+  print( paste("Starting fold", fold )  )
+  ind_train <- which( cv != fold  )
+  ind_test   <- which( cv == fold  )
+  
+  train_cv <- train[ind_train,]
+  smote <- ubUnder(train_cv[-(ncol(train_cv))],train_cv$target,perc = 47,method = "percPos")
+  x <- smote$X
+  target <- smote$Y
+  smoted <- cbind(x,target)
+  table(smoted$target)
+  
+  
+  test_cv <- train[ind_test,]
+  testgl <- test
+  
+  
+  objControl <- trainControl(method='cv', number=3, returnResamp='none')
+  
+  gl <- caret::train(smoted[-(ncol(smoted))], smoted$target, method='glmnet',  metric = "Accuracy", trControl=objControl)
+  
+  
+  predictions_net_train[ind_test] <- as.numeric(predict(gl,test_cv[-(ncol(test_cv))],type="prob")[,"1"])
+  df_test_net[fold+1] <- as.numeric(predict(gl,testgl[-(ncol(testgl))],type="prob")[,"1"])
+  
+}
+
+
+POOF <- cbind(data.frame(xgb = predictions_xgb_train),
+              data.frame(gb = predictions_gb_train),
+              data.frame(svm = predictions_svm_train),
+              data.frame(rf = predictions_rf_train),
+              data.frame(net = predictions_net_train)
+)
+
+POOF$target <- train$target
+
+
+
+df_test_xgb$PFF <- (df_test_xgb$PF1+df_test_xgb$PF2+df_test_xgb$PF3+df_test_xgb$PF4+df_test_xgb$PF5)/5
+df_test_gb$PFF <- (df_test_gb$PF1+df_test_gb$PF2+df_test_gb$PF3+df_test_gb$PF4+df_test_gb$PF5)/5
+df_test_svm$PFF <- (df_test_svm$PF1+df_test_svm$PF2+df_test_svm$PF3+df_test_svm$PF4+df_test_svm$PF5)/5
+df_test_rf$PFF <- (df_test_rf$PF1+df_test_rf$PF2+df_test_rf$PF3+df_test_rf$PF4+df_test_rf$PF5)/5
+df_test_net$PFF <- (df_test_net$PF1+df_test_net$PF2+df_test_net$PF3+df_test_net$PF4+df_test_net$PF5)/5
+
+test2 <- cbind(data.frame(xgb = df_test_xgb$PFF),
+               data.frame(gb = df_test_gb$PFF),
+               data.frame(svm = df_test_svm$PFF),
+               data.frame(rf = df_test_rf$PFF),
+               data.frame(net = df_test_net$PFF)
+)
+
+test2$target <- test$target
+
+
+
+smote <- ubUnder(POOF[-(ncol(POOF))],POOF$target,perc = 50,method = "percPos")
+x <- smote$X
+target <- smote$Y
+smoted <- cbind(x,target)
+table(smoted$target)
+
+
+rlmodel <- glm (target ~ ., data = smoted, family = binomial(link='logit'))
+
+y_pred1 <- predict(rlmodel,newdata= test2 ,type = 'response')
+
+Metrics::auc( as.factor(test$target) , as.numeric(y_pred1) )
