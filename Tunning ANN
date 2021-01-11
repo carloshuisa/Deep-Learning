@@ -1,0 +1,188 @@
+####### Code to tune and save ANNs weights following a specific logic #######
+
+
+import pandas as pd
+import numpy as np
+import tensorflow as tf
+from keras import backend as K
+import keras.callbacks as callbacks
+from keras import models
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Activation
+from keras.optimizers import SGD
+from keras.datasets import mnist
+from keras.utils import np_utils
+from keras.utils.vis_utils import plot_model
+from keras.regularizers import L1L2
+from keras.layers import BatchNormalization, Dropout
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import recall_score
+from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import auc
+from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import SGDClassifier
+from scipy.optimize import minimize
+from sklearn.metrics import log_loss
+from pandas import ExcelWriter
+from keras.models import load_model
+import sklearn.metrics as metrics
+import matplotlib.pyplot as plt
+import pickle
+%matplotlib inline
+
+from keras.callbacks import Callback
+class roc_checkpoint(Callback):
+    def __init__(self,training_data,validation_data):
+        self.x = training_data[0]
+        self.y = training_data[1]
+        self.x_val = validation_data[0]
+        self.y_val = validation_data[1]
+
+
+    def on_train_begin(self, logs={}):
+        return
+
+    def on_train_end(self, logs={}):
+        return
+
+    def on_epoch_begin(self, epoch, logs={}):
+        return
+    
+
+    def on_epoch_end(self, epoch, logs={}):
+        y_pred = self.model.predict(self.x)
+        roc = roc_auc_score(self.y, y_pred)
+        y_pred_val = self.model.predict(self.x_val)
+        roc_val = roc_auc_score(self.y_val, y_pred_val)
+        print('\rroc-auc: %s - roc-auc_val: %s' % (str(round(roc,4)),str(round(roc_val,4))),end=100*' '+'\n')
+        return
+
+    def on_batch_begin(self, batch, logs={}):
+        return
+
+    def on_batch_end(self, batch, logs={}):
+        return
+
+
+
+class roc_checkpoint(Callback):
+    def __init__(self, filepath, monitor='val_loss', verbose=0,
+                 save_best_only=False, save_weights_only=False,
+                 mode='auto', period=1,training_data=None,validation_data=None):
+        self.monitor = 'roc_auc'
+        self.verbose = verbose
+        self.filepath = filepath
+        self.save_best_only = save_best_only
+        self.save_weights_only = save_weights_only
+        self.period = period
+        self.epochs_since_last_save = 0
+        self.x = training_data[0]
+        self.y = training_data[1]
+        self.x_val = validation_data[0]
+        self.y_val = validation_data[1]
+
+        if mode not in ['auto', 'min', 'max']:
+            warnings.warn('ModelCheckpoint mode %s is unknown, '
+                          'fallback to auto mode.' % (mode),
+                          RuntimeWarning)
+            mode = 'auto'
+
+        if mode == 'min':
+            self.monitor_op = np.less
+            self.best = np.Inf
+        elif mode == 'max':
+            self.monitor_op = np.greater
+            self.best = -np.Inf
+        else:
+            if 'acc' in self.monitor or self.monitor.startswith('fmeasure'):
+                self.monitor_op = np.greater
+                self.best = -np.Inf
+            else:
+                self.monitor_op = np.less
+                self.best = np.Inf
+
+    def on_epoch_end(self, epoch, logs=None):
+        y_pred = self.model.predict(self.x)
+        roc = roc_auc_score(self.y, y_pred)
+        y_pred_val = self.model.predict(self.x_val)
+        current = roc_auc_score(self.y_val, y_pred_val)
+        overfit= abs(roc-current)
+        recall = recall_score(self.y_val, model.predict_classes(self.x_val), average='binary')
+        print('\rroc-auc: %s - roc-auc_val: %s' % (str(round(roc,4)),str(round(current,4))),end=100*' '+'\n')
+        logs = logs or {}
+        self.epochs_since_last_save += 1
+        if self.epochs_since_last_save >= self.period:
+            self.epochs_since_last_save = 0
+            filepath = self.filepath.format(epoch=epoch + 1, **logs)
+            if self.save_best_only:
+                if current is None:
+                    warnings.warn('Can save best model only with %s available, '
+                                  'skipping.' % (self.monitor), RuntimeWarning)
+                else:
+                    if ((self.monitor_op(current, self.best)) & (overfit<0.07)):
+                        if self.verbose > 0:
+                            print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
+                                  ' saving model to %s'
+                                  % (epoch + 1, self.monitor, self.best,
+                                     current, filepath))
+                        self.best = current
+                        if self.save_weights_only:
+                            self.model.save_weights(filepath, overwrite=True)
+                        else:
+                            self.model.save(filepath, overwrite=True)
+                    else:
+                        if self.verbose > 0:
+                            print('\nEpoch %05d: %s did not improve from %0.5f' %
+                                  (epoch + 1, self.monitor, self.best))
+            else:
+                if self.verbose > 0:
+                    print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
+                if self.save_weights_only:
+                    self.model.save_weights(filepath, overwrite=True)
+                else:
+                    self.model.save(filepath, overwrite=True)
+                    
+ ####### Training ANN model with callback ##########
+ 
+model = Sequential()
+model.add(Dense(205, input_dim=len(train.columns), activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(220, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(230, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(230, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(260, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(260, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(230, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(230, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(220, activation='relu'))
+model.add(Dropout(0.35))
+model.add(Dense(205, activation='relu'))
+model.add(Dense(1,  activation='sigmoid'))
+model.compile(optimizer=SGD(lr=0.0042), loss='binary_crossentropy', metrics=['accuracy'])
+model.summary()
+
+
+model.fit(train, y_train, epochs=30, validation_data=(test, y_val),verbose=1,callbacks=[roc_checkpoint("Best_prop_c.h5",verbose=1,mode='max',save_best_only=True, save_weights_only=True,
+               training_data=(train, y_train),validation_data=(test, y_val))])
+               
+               
+
+
+
+
+ 
+
